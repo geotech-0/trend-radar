@@ -26,13 +26,12 @@ class GeminiClient:
 
     async def generate(self, system: str, user: str, *, max_tokens: int,
                        temperature: float = 0.5, json_mode: bool = False,
-                       response_schema: dict | None = None) -> str:
-        config: dict = {
-            "maxOutputTokens": max_tokens,
-            "temperature": temperature,
-            # 2.5 계열의 thinking 토큰이 출력 한도를 잡아먹지 않게 끈다
-            "thinkingConfig": {"thinkingBudget": 0},
-        }
+                       response_schema: dict | None = None, model: str | None = None,
+                       thinking_budget: int | None = 0) -> str:
+        config: dict = {"maxOutputTokens": max_tokens, "temperature": temperature}
+        if thinking_budget is not None:
+            # thinking 토큰이 출력 한도를 잡아먹지 않게 끈다 (lite 계열은 이 필드를 받지 않는다)
+            config["thinkingConfig"] = {"thinkingBudget": thinking_budget}
         if json_mode or response_schema:
             config["responseMimeType"] = "application/json"
         if response_schema:
@@ -45,7 +44,7 @@ class GeminiClient:
         }
         try:
             r = await self._http.post(
-                URL.format(model=self._s.gemini_model),
+                URL.format(model=model or self._s.gemini_model),
                 json=body,
                 headers={"x-goog-api-key": self._s.gemini_api_key},
             )

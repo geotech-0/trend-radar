@@ -2,7 +2,7 @@ name: collect
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "0 22 * * *"   # 매일 07:00 KST (UTC 22:00). GitHub 사정으로 수십 분 늦을 수 있다
   workflow_dispatch:
   push:
     branches: [main]

@@ -25,8 +25,8 @@ from app.store.memory import MemoryStore
 
 log = logging.getLogger("build_site")
 
-DAILY_LOOKBACK = timedelta(hours=24)
-TRENDS_WINDOW = timedelta(hours=24)
+# 하루 1회 운영: 예약 실행이 늦게 시작돼도 전날 실행을 기준선으로 잡도록 20시간으로 둔다
+DAILY_LOOKBACK = timedelta(hours=20)
 
 
 def _iso(dt: datetime | None) -> str | None:
@@ -34,18 +34,28 @@ def _iso(dt: datetime | None) -> str | None:
 
 
 def daily_baseline(store: MemoryStore, latest: Snapshot) -> Snapshot | None:
-    base = store.nearest_before(latest.captured_at - DAILY_LOOKBACK) or store.oldest()
+    base = store.nearest_before(latest.captured_at - DAILY_LOOKBACK) or store.previous()
     return None if base is latest else base
 
 
+def _due(meta: dict, key: str, every_sec: int, now: datetime) -> bool:
+    """마지막 시도 후 every_sec가 지났는가. 실패해도 시도 시각을 남겨 한도를 지킨다."""
+    last = meta.get(key)
+    return not last or (now - datetime.fromisoformat(last.replace("Z", "+00:00"))).total_seconds() >= every_sec
+
+
 async def refresh_briefs(llm: GeminiClient, store: MemoryStore, latest: Snapshot,
-                         names: dict[str, str], briefs: dict, s: Settings) -> dict:
-    """버킷이 바뀐 모드만 다시 생성한다. 실패하면 이전 브리핑을 stale로 남긴다."""
+                         names: dict[str, str], briefs: dict, s: Settings,
+                         meta: dict, now: datetime) -> dict:
+    """brief_every_sec마다, 버킷이 바뀐 모드만 다시 생성한다. 실패하면 이전 브리핑을 stale로 남긴다."""
     out = dict(briefs)
     for mode in ("now", "daily"):
         prev = briefs.get(mode)
         if prev and prev.get("bucket") == latest.bucket and not prev.get("stale"):
             continue
+        if not _due(meta, f"brief_{mode}_at", s.brief_every_sec if prev else s.collect_interval_sec, now):
+            continue
+        meta[f"brief_{mode}_at"] = _iso(now)
         baseline = store.previous() if mode == "now" else daily_baseline(store, latest)
         system, user = build_prompt(mode, latest, baseline, names)
         try:
@@ -83,9 +93,8 @@ def trending_payload(store: MemoryStore, names: dict[str, str], tagger: Tagger,
 
 
 def trends_payload(store: MemoryStore, names: dict[str, str], now: datetime) -> dict:
-    return {"hours": int(TRENDS_WINDOW.total_seconds() // 3600),
-            "categories": {**{cid: category_name(cid, names) for cid in FIXED_CATEGORIES}, OTHER: OTHER_NAME},
-            "points": trend_series(store.since(now - TRENDS_WINDOW))}
+    return {"categories": {**{cid: category_name(cid, names) for cid in FIXED_CATEGORIES}, OTHER: OTHER_NAME},
+            "points": trend_series(store.since(EPOCH))}   # 링버퍼 전체(최대 48회 실행)
 
 
 def brief_payload(briefs: dict) -> dict:
@@ -98,7 +107,8 @@ async def run(state_dir: Path, out_dir: Path, frontend_dir: Path) -> None:
     store = load_store(state_dir / "snapshots.json", s.ring_size)
     briefs = read_json(state_dir / "brief.json", {})
     yt, llm = YouTubeClient(s), GeminiClient(s)
-    tagger = Tagger(llm, s.tag_max_tokens)
+    tagger = Tagger(llm, s.tag_max_tokens, s.tag_model)
+    meta = read_json(state_dir / "meta.json", {})
     tagger.load(read_json(state_dir / "tags.json", {}))
     names, last_error = dict(DEFAULT_CATEGORY_NAMES), None
     try:
@@ -114,8 +124,10 @@ async def run(state_dir: Path, out_dir: Path, frontend_dir: Path) -> None:
         latest = store.latest()
         if latest is not None:
             keep = {it.id for snap in store.since(EPOCH) for it in snap.items}
-            await tagger.tag(latest.items, keep)
-            briefs = await refresh_briefs(llm, store, latest, names, briefs, s)
+            if tagger.missing(latest.items) and _due(meta, "tag_at", s.tag_every_sec if tagger.dump() else s.collect_interval_sec, now):
+                meta["tag_at"] = _iso(now)
+                await tagger.tag(latest.items, keep)
+            briefs = await refresh_briefs(llm, store, latest, names, briefs, s, meta, now)
     finally:
         await yt.aclose()
         await llm.aclose()
@@ -130,6 +142,7 @@ async def run(state_dir: Path, out_dir: Path, frontend_dir: Path) -> None:
     save_store(store, state_dir / "snapshots.json")
     write_json(state_dir / "tags.json", tagger.dump())
     write_json(state_dir / "brief.json", briefs)
+    write_json(state_dir / "meta.json", meta)
     log.info("site written to %s", out_dir)
 
 

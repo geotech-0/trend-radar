@@ -195,6 +195,11 @@
   .icon-btn:hover { background: var(--color-bg-surface-alt-1); }
   .icon-btn:active { background: var(--color-bg-surface-alt-2); }
   .icon-btn:disabled { color: var(--color-text-disabled); cursor: default; background: transparent; }
+  .update-btn {
+    height: 36px; padding: 0 12px; border-radius: var(--radius-sm); display: inline-flex; align-items: center; flex: none;
+    color: var(--color-action-primary); background: var(--tint-primary); text-decoration: none; white-space: nowrap;
+  }
+  .update-btn:hover { background: color-mix(in srgb, var(--color-action-primary) 18%, var(--color-bg-surface)); }
   .icon-btn.busy svg { animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -336,6 +341,7 @@
   @media (max-width: 1199px) { .grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); } }
   @media (max-width: 599px) {
     :root { --gutter: 20px; --header-h: 56px; }
+    .update-btn { height: 32px; padding: 0 10px; }
     .brand h1 { font-size: 18px; }
     .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .stat { padding: 12px; }
@@ -358,7 +364,8 @@
       <h1 class="t-heading2">Trend Radar</h1>
       <span class="updated t-caption1" id="updated" aria-live="polite">불러오는 중…</span>
     </div>
-    <button class="icon-btn" id="refresh" type="button" aria-label="새로고침" title="새로고침"></button>
+    <a class="update-btn t-label1" id="update" href="https://github.com/geotech-0/trend-radar/actions/workflows/collect.yml" target="_blank" rel="noopener" title="GitHub에서 Run workflow를 누르면 1~2분 뒤 반영됩니다">지금 업데이트</a>
+    <button class="icon-btn" id="refresh" type="button" aria-label="최신 데이터 불러오기" title="최신 데이터 불러오기"></button>
     <button class="icon-btn" id="theme" type="button" aria-label="테마 전환" title="테마 전환"></button>
   </div>
 </header>
@@ -388,11 +395,11 @@
   <section aria-labelledby="flow-title">
     <div class="section-head">
       <h2 id="flow-title" class="t-heading3">카테고리 점유율 흐름</h2>
-      <span class="sub t-caption1">30개 중 비율 · 막대 아래는 직전 대비 진입/이탈</span>
+      <span class="sub t-caption1">갱신마다 30개 중 비율 · 막대 아래는 직전 대비 진입/이탈</span>
       <div class="seg t-label1" id="hours" role="group" aria-label="기간">
-        <button type="button" data-h="6">6시간</button>
-        <button type="button" data-h="12">12시간</button>
-        <button type="button" data-h="24">24시간</button>
+        <button type="button" data-h="7">7일</button>
+        <button type="button" data-h="14">14일</button>
+        <button type="button" data-h="30">30일</button>
       </div>
     </div>
     <div class="panel">
@@ -405,10 +412,10 @@
   <section aria-labelledby="brief-title">
     <div class="section-head">
       <h2 id="brief-title" class="t-heading3">AI 브리핑</h2>
-      <span class="sub t-caption1">수집 때마다 미리 생성</span>
+      <span class="sub t-caption1">갱신 때마다 미리 생성</span>
       <div class="seg t-label1" id="brief-modes" role="group" aria-label="브리핑 모드">
         <button type="button" data-mode="now">지금 요약</button>
-        <button type="button" data-mode="daily">24시간 비교</button>
+        <button type="button" data-mode="daily">어제와 비교</button>
       </div>
     </div>
     <div class="panel"><div id="brief-out" aria-live="polite"></div></div>
@@ -416,7 +423,7 @@
 </main>
 
 <footer class="app t-caption1">
-  <div class="wrap">데이터: YouTube Data API · 30분마다 자동 갱신 · AI: Google Gemini</div>
+  <div class="wrap">데이터: YouTube Data API · 매일 오전 7시 자동 갱신 · AI: Google Gemini</div>
 </footer>
 
 <script>
@@ -424,8 +431,8 @@ const ICONS = {"sun": {"vb": "0 0 24 24", "body": "<path d=\"M12 4V2M12 20V22M6.
 const DATA = { trending: "data/trending.json", trends: "data/trends.json", brief: "data/brief.json" };
 const CATEGORY_ORDER = ["10", "20", "24", "25", "17", "1", "28", "23"];
 const SERIES = [...CATEGORY_ORDER, "other"];
-const POLL_MS = 5 * 60_000, TIMEOUT_MS = 15_000, STALE_MS = 60 * 60_000;
-const state = { category: null, hours: 6, mode: "now", trending: null, trends: null, brief: null, loading: false };
+const POLL_MS = 10 * 60_000, TIMEOUT_MS = 15_000, STALE_MS = 26 * 3600_000;   // 하루 1회 운영
+const state = { category: null, days: 7, mode: "now", trending: null, trends: null, brief: null, loading: false };
 const $ = (id) => document.getElementById(id);
 const canHover = matchMedia("(hover: hover) and (pointer: fine)");
 
@@ -452,6 +459,8 @@ function compact(n) {
 }
 const kst = (iso, opts) => new Date(iso).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", ...opts });
 const hhmm = (iso) => kst(iso, { hour: "2-digit", minute: "2-digit", hour12: false });
+const mdhm = (iso) => kst(iso, { month: "numeric", day: "numeric" }) + " " + hhmm(iso);
+const md2 = (iso) => kst(iso, { month: "numeric", day: "numeric" });
 const pct = (v) => `${Math.round(v * 100)}%`;
 function ago(iso) {
   const s = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
@@ -621,16 +630,16 @@ function renderLegend(names) {
 }
 function visiblePoints() {
   const pts = state.trends?.points || [];
-  const since = Date.now() - state.hours * 3600_000;
+  const since = Date.now() - state.days * 86400_000;
   return pts.filter((p) => new Date(p.captured_at) >= since);
 }
 function renderTable(pts, names) {
   const t = el("table", "num"); const head = el("tr");
-  head.append(el("th", null, "시각"), ...SERIES.map((c) => el("th", null, names[c])), el("th", null, "진입"), el("th", null, "이탈"));
+  head.append(el("th", null, "갱신 시각"), ...SERIES.map((c) => el("th", null, names[c])), el("th", null, "진입"), el("th", null, "이탈"));
   t.append(head);
   for (const p of pts) {
     const r = el("tr");
-    r.append(el("td", null, hhmm(p.captured_at)), ...SERIES.map((c) => el("td", null, pct(p.shares[c] || 0))), el("td", null, p.entered), el("td", null, p.exited));
+    r.append(el("td", null, mdhm(p.captured_at)), ...SERIES.map((c) => el("td", null, pct(p.shares[c] || 0))), el("td", null, p.entered), el("td", null, p.exited));
     t.append(r);
   }
   $("flow-table").replaceChildren(t);
@@ -660,7 +669,7 @@ function renderChart() {
   const tip = el("div", "tip t-caption1 num");
   let pinned = null;
   const showTip = (i, p, cx) => {
-    tip.replaceChildren(el("div", "t-label2", `${hhmm(p.captured_at)} · 진입 ${p.entered} / 이탈 ${p.exited}`));
+    tip.replaceChildren(el("div", "t-label2", `${mdhm(p.captured_at)} · 진입 ${p.entered} / 이탈 ${p.exited}`));
     for (const cid of [...SERIES].reverse()) {
       if (!p.shares[cid]) continue;
       const r = el("div", "row"); const sw = el("i"); sw.style.background = color(cid);
@@ -685,7 +694,7 @@ function renderChart() {
       acc += v;
     }
     root.append(g);
-    if (i % labelEvery === 0 || i === pts.length - 1) { const t = svg("text", { x: cx, y: H - m.b + 16, "text-anchor": "middle" }); t.textContent = hhmm(p.captured_at); root.append(t); }
+    if (i % labelEvery === 0 || i === pts.length - 1) { const t = svg("text", { x: cx, y: H - m.b + 16, "text-anchor": "middle" }); t.textContent = md2(p.captured_at); root.append(t); }
     if (showFlow && i > 0) {
       const a = svg("text", { x: cx, y: H - m.b + 30, "text-anchor": "middle", class: "flow-in" }); a.textContent = `+${p.entered}`;
       const b = svg("text", { x: cx, y: H - m.b + 42, "text-anchor": "middle", class: "flow-out" }); b.textContent = `−${p.exited}`;
@@ -758,8 +767,8 @@ async function load() {
     state.loading = false; btn.disabled = false; btn.classList.remove("busy");
   }
 }
-function renderHours() { for (const b of $("hours").querySelectorAll("button")) b.setAttribute("aria-pressed", String(Number(b.dataset.h) === state.hours)); }
-$("hours").addEventListener("click", (e) => { const h = Number(e.target.closest("button")?.dataset.h); if (h) { state.hours = h; renderHours(); renderChart(); } });
+function renderHours() { for (const b of $("hours").querySelectorAll("button")) b.setAttribute("aria-pressed", String(Number(b.dataset.h) === state.days)); }
+$("hours").addEventListener("click", (e) => { const d = Number(e.target.closest("button")?.dataset.h); if (d) { state.days = d; renderHours(); renderChart(); } });
 let resizeTimer;
 addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => state.trends && renderChart(), 150); });
 $("refresh").addEventListener("click", load);

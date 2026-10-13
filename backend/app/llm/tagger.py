@@ -67,8 +67,9 @@ def _parse(text: str) -> dict:
 
 
 class Tagger:
-    def __init__(self, client: GeminiClient, max_tokens: int) -> None:
+    def __init__(self, client: GeminiClient, max_tokens: int, model: str | None = None) -> None:
         self._client = client
+        self._model = model
         self._max_tokens = max_tokens
         self._tags: dict[str, dict] = {}
 
@@ -80,6 +81,9 @@ class Tagger:
 
     def dump(self) -> dict:
         return dict(self._tags)
+
+    def missing(self, items: tuple[Item, ...]) -> int:
+        return sum(1 for it in items if it.id not in self._tags)
 
     async def tag(self, items: tuple[Item, ...], keep_ids: set[str]) -> int:
         """태그 없는 영상을 태깅하고 추가된 개수를 돌려준다. 실패하면 0이고 기존 태그는 그대로다."""
@@ -99,6 +103,7 @@ class Tagger:
                 text = await self._client.generate(
                     SYSTEM, json.dumps(payload, ensure_ascii=False),
                     max_tokens=self._max_tokens, temperature=0.3, response_schema=SCHEMA,
+                    model=self._model, thinking_budget=None,
                 )
                 data = _parse(text)
                 break

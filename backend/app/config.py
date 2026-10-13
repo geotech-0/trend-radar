@@ -19,8 +19,11 @@ class Settings:
     collect_interval_sec: int
     ring_size: int
     gemini_model: str
+    tag_model: str
     brief_max_tokens: int
     tag_max_tokens: int
+    brief_every_sec: int
+    tag_every_sec: int
 
 
 def _require(name: str) -> str:
@@ -43,6 +46,11 @@ def get_settings() -> Settings:
         collect_interval_sec=int(os.environ.get("COLLECT_INTERVAL_SEC", "1800")),
         ring_size=ring_size,
         gemini_model=os.environ.get("GEMINI_MODEL", "gemini-flash-latest"),
+        # 무료 등급은 모델당 하루 20회라 태깅은 다른 모델(별도 한도)을 쓴다
+        tag_model=os.environ.get("TAG_MODEL", "gemini-flash-lite-latest"),
         brief_max_tokens=int(os.environ.get("BRIEF_MAX_TOKENS", "1200")),
         tag_max_tokens=int(os.environ.get("TAG_MAX_TOKENS", "8000")),
+        # 운영은 하루 1회 + 수동 실행. 수동 실행이 몰려도 모델당 하루 20회 한도를 넘지 않게 간격을 둔다
+        brief_every_sec=int(os.environ.get("BRIEF_EVERY_SEC", "3600")),
+        tag_every_sec=int(os.environ.get("TAG_EVERY_SEC", "1800")),
     )
