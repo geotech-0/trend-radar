@@ -1,0 +1,75 @@
+name: collect
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["backend/**", "frontend/**", ".github/workflows/**"]
+
+# 실행이 겹치지 않게 한다 (멱등 저장의 이중 안전장치)
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch state (data branch)
+        run: git clone -q --depth 1 -b data "https://github.com/${GITHUB_REPOSITORY}.git" state || mkdir -p state
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Build site
+        working-directory: backend
+        env:
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: uv run --python 3.12 python -m app.build_site --state ../state --out ../site --frontend ../frontend
+
+      - name: Secret guard
+        env:
+          YT: ${{ secrets.YT_API_KEY }}
+          GM: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          for k in "$YT" "$GM"; do
+            [ -z "$k" ] && continue
+            if grep -rqF --exclude-dir=.git -- "$k" site state; then echo "secret found in build output"; exit 1; fi
+          done
+
+      - name: Save state (data branch, single orphan commit)
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          cd state && rm -rf .git && git init -q -b data && git add -A
+          git -c user.name=trend-bot -c user.email=trend-bot@users.noreply.github.com commit -qm "state $(date -u +%FT%TZ)"
+          AUTH=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+          git -c http.extraheader="AUTHORIZATION: basic $AUTH" push -qf "https://github.com/${GITHUB_REPOSITORY}.git" data
+
+      - name: Keepalive (scheduled runs stop after 60 idle days)
+        run: |
+          if [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt $((45*86400)) ]; then
+            date -u +%F > .github/keepalive && git add .github/keepalive
+            git -c user.name=trend-bot -c user.email=trend-bot@users.noreply.github.com commit -qm "chore: keepalive"
+            git push -q
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

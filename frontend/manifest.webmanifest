@@ -1,0 +1,16 @@
+{
+  "name": "Trend Radar — 유튜브 급상승",
+  "short_name": "트렌드 레이더",
+  "description": "지금 한국 유튜브 급상승 30개의 순위 변동, 카테고리 흐름, AI 브리핑",
+  "lang": "ko",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#EEF1F5",
+  "theme_color": "#0F6FFF",
+  "icons": [
+    {"src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
