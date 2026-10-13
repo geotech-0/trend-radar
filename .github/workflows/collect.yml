@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["backend/**", "frontend/**", ".github/workflows/**"]
+    paths: ["backend/**", "frontend/**", ".github/workflows/**", ".github/scripts/**"]
 
 # 실행이 겹치지 않게 한다 (멱등 저장의 이중 안전장치)
 concurrency:
@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Fetch state (data branch)
-        run: git clone -q --depth 1 -b data "https://github.com/${GITHUB_REPOSITORY}.git" state || mkdir -p state
+        run: .github/scripts/fetch-state.sh "https://github.com/${GITHUB_REPOSITORY}.git" state
 
       - uses: astral-sh/setup-uv@v6
 

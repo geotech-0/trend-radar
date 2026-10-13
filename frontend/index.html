@@ -196,7 +196,7 @@
   .icon-btn:active { background: var(--color-bg-surface-alt-2); }
   .icon-btn:disabled { color: var(--color-text-disabled); cursor: default; background: transparent; }
   .update-btn {
-    height: 36px; padding: 0 12px; border-radius: var(--radius-sm); display: inline-flex; align-items: center; flex: none;
+    height: 40px; padding: 0 12px; border-radius: var(--radius-sm); display: inline-flex; align-items: center; flex: none;   /* 터치 영역 40px 이상 */
     color: var(--color-action-primary); background: var(--tint-primary); text-decoration: none; white-space: nowrap;
   }
   .update-btn:hover { background: color-mix(in srgb, var(--color-action-primary) 18%, var(--color-bg-surface)); }
@@ -341,7 +341,7 @@
   @media (max-width: 1199px) { .grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); } }
   @media (max-width: 599px) {
     :root { --gutter: 20px; --header-h: 56px; }
-    .update-btn { height: 32px; padding: 0 10px; }
+    .update-btn { padding: 0 10px; }
     .brand h1 { font-size: 18px; }
     .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .stat { padding: 12px; }
